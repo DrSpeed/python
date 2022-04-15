@@ -118,6 +118,7 @@ splash.append(barGraph)
 # Red ornaments-------
 drawRect(20, 20, 200, 200, 0xFF0000, splash)
 drawRect(0, 0, 239, 239, 0xDD0000, splash)    
+#------
 
 lastTime = time.monotonic()
 while True:
