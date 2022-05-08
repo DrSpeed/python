@@ -4,10 +4,19 @@ import terminalio
 from adafruit_display_text import label
 from adafruit_gizmo import tft_gizmo
 import microcontroller
-
+import busio
+import board
 import time
+from math import sin, cos, atan2, degrees
+from adafruit_lsm6ds.lsm6ds33 import LSM6DS33
+
+import adafruit_l3gd20
+import adafruit_lsm303_accel
+import adafruit_lsm303dlh_mag
+import adafruit_lis3mdl
 
 from adafruit_circuitplayground import cp
+
 
 from adafruit_display_shapes.rect import Rect
 from adafruit_display_shapes.circle import Circle
@@ -15,6 +24,49 @@ from adafruit_display_shapes.roundrect import RoundRect
 from adafruit_display_shapes.triangle import Triangle
 from adafruit_display_shapes.line import Line
 from adafruit_display_shapes.polygon import Polygon
+
+print('starting')
+
+COMPASS_X = 180
+COMPASS_Y = 120
+COMPASS_R = 30
+
+# Does not work on this microcontroller
+#I2C = busio.I2C(board.SCL, board.SDA)
+
+I2C = busio.I2C(board.A2, board.A1) # Monkey around until you get a pair
+print('got I2c')
+sensor = LSM6DS33(I2C)
+mag = adafruit_lis3mdl.LIS3MDL(I2C)
+
+#gyro = adafruit_l3gd20.L3GD20_I2C(I2C)
+#mag = adafruit_lsm303dlh_mag.LSM303DLH_Mag(I2C)
+#mag = adafruit_lsm303dlh_mag.LIS3MSM303DLH_Mag(I2C)
+#accel = adafruit_lsm303_accel.LSM303_Accel(I2C)
+
+#accel.range = adafruit_lsm303_accel.Range.RANGE_2G
+#accel.mode = adafruit_lsm303_accel.Mode.MODE_HIGH_RESOLUTION
+
+print('got all I2c stuff')
+
+def vector_2_degrees(x, y):
+    angle = degrees(atan2(y, x))
+    if angle < 0:
+        angle += 360
+    return angle
+
+def vector_2_rad(x, y):
+    angle = atan2(y, x)
+    return angle
+
+def get_heading_rad(_sensor):
+    magnet_x, magnet_y, _ = _sensor.magnetic
+    return vector_2_rad(magnet_x, magnet_y)
+
+def get_heading(_sensor):
+    magnet_x, magnet_y, _ = _sensor.magnetic
+    return vector_2_degrees(magnet_x, magnet_y)
+
 
 # Create the TFT Gizmo display, global, there's only one
 display = tft_gizmo.TFT_Gizmo()
@@ -52,6 +104,10 @@ def getAccelText():
 def getLight():
     return 'LightSensor: ' + str(cp.light)
 
+def getMag():
+        return("{:.2f}'".format(get_heading(mag)))
+        #return "%0.2f\n%0.2f\n%0.2f"%mag.magnetic
+
 #
 # Draw a line (unfilled) rectangle.
 # There's probably a better way, and this uses up the child space, but hey, it works.
@@ -66,6 +122,10 @@ def drawRect(x, y, w, h, color, gp):
     l = Line(x, y+h, x, y, color)
     gp.append(l)
 
+def drawCircle(x, y, r, phil, edge, group):
+    #c = Circle(x, y, r, phil, edge, 1)
+    circle = Circle(x, y, r, fill=phil, outline=edge)
+    group.append(circle)
 
 color_bitmap = displayio.Bitmap(240, 240, 1)
 color_palette = displayio.Palette(1)
@@ -104,21 +164,40 @@ l_group = makeTextLabel(txt, 30, 200, 0x00DDDD, frameIt=False)
 splash.append(l_group)
 
 
-barBg = 0x000033
-barFg = 0x0000DD
-barOl = 0xFF0000
-barGraph = displayio.Group(max_size=30, x=170, y=40)
-rectb = Rect(0, 0, 40, 100, fill=barBg, outline=barOl)
-rectf = Rect(0, 0, 40, 50, fill=barFg)
-barGraph.append(rectb)
-barGraph.append(rectf)
-splash.append(barGraph)
+txt = getMag()
+m_group = makeTextLabel(txt, 150, 80, 0x00DDDD, frameIt=False)
+splash.append(m_group)
 
 
 # Red ornaments-------
 drawRect(20, 20, 200, 200, 0xFF0000, splash)
 drawRect(0, 0, 239, 239, 0xDD0000, splash)    
-#------
+
+
+COMPASS_OUTER = 0x00BB00
+COMPASS_CROSS = 0x008800
+drawCircle(COMPASS_X, COMPASS_Y, COMPASS_R,  0x005500, COMPASS_OUTER, splash)
+drawCircle(COMPASS_X, COMPASS_Y, COMPASS_R+2,  None, COMPASS_OUTER, splash)
+drawCircle(COMPASS_X, COMPASS_Y, 2,  None, COMPASS_OUTER, splash)
+cl = Line(COMPASS_X - COMPASS_R, COMPASS_Y, COMPASS_X + COMPASS_R, COMPASS_Y, COMPASS_CROSS)
+splash.append(cl)
+cl = Line(COMPASS_X, COMPASS_Y-COMPASS_R, COMPASS_X, COMPASS_Y+COMPASS_R , COMPASS_CROSS)
+splash.append(cl)
+# just add a line here so the pop() call elsewhere has something to pop()
+X = round(COMPASS_R*cos(0) + COMPASS_X)
+Y = round(COMPASS_R*sin(0) + COMPASS_Y)
+cl = Line(COMPASS_X, COMPASS_Y, X, Y, 0xFFFFFF)
+#print(str(X) + ' ' + str(Y))
+splash.append(cl)
+
+def updateCompass(deg):
+    X = round(COMPASS_R*cos(deg) + COMPASS_X)
+    Y = round(COMPASS_R*sin(deg) + COMPASS_Y)
+    #print(str(X) + ' ' + str(Y))
+    cl = Line(COMPASS_X, COMPASS_Y, X, Y, 0xFFFF00)
+    splash.pop()
+    splash.append(cl)
+
 
 lastTime = time.monotonic()
 while True:
@@ -127,7 +206,6 @@ while True:
     # text_group is a Group
     # text_area is a Label
     # splash has text_group has text_area
-
     nowTime = time.monotonic()
     if (nowTime != lastTime):
         #text_group.remove(text_area)
@@ -144,10 +222,17 @@ while True:
         txt = getLight()
         ltext_area = label.Label(terminalio.FONT, text=txt, color=0x00FFDD)   
         l_group[0] = ltext_area
-        
+
+        txt = getMag()
+        ltext_area = label.Label(terminalio.FONT, text=txt, color=0x00FFDD)   
+        m_group[0] = ltext_area
+
+        updateCompass(get_heading_rad(mag))
+
         lastTime = nowTime
 
-    time.sleep(1.0)
+        
+    time.sleep(0.5)
 
 
 
