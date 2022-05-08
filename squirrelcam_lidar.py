@@ -39,7 +39,13 @@ BLACK = (0, 0, 0)
 # Turn off neopixel
 led[0] = (0,0,0)
 
+# serial LCD uses the UART, very old school but hey, whatever
 uart = busio.UART(board.TX, board.RX, baudrate=9600)
+
+# LCD STUFF----------
+def LcdCmd(b):
+    uart.write( bytearray(b) )
+    time.sleep(0.1)
 
 def Clear():
     LcdCmd([0xFE, 0x01]) 
@@ -53,23 +59,24 @@ def LcdOff():
 def SetCursor(col, row):  # col, row starting at 1
     LcdCmd([0xFE, 0x47, col, row])
 
-def LcdCmd(b):
-    uart.write( bytearray(b) )
-    time.sleep(0.1)
-
 def WriteString(text):
     LcdCmd(text)
+# END LCD --------------------
 
 Clear()
-WriteString('Initializing...')
+WriteString('Initializing...') # We can only do this after we actually have the LCD
 time.sleep(1.0)
 
 # Create sensor object, communicating over the board's default I2C bus
+Clear()
+WriteString('I2C, sensors, camera...') # We can only do this after we actually have the LCD
+print('creating i2c')
 i2c = board.I2C()  # uses board.SCL and board.SDA
 print('created first i2c')
 print('attemping light sensor on first i2c')
 lightSensor = adafruit_tsl2591.TSL2591(i2c)
 print('created light sensor')
+Clear()
 
 #--------------------------------------------
 # Time Of Flight
