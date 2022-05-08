@@ -1,121 +1,203 @@
-
-import displayio
-import terminalio
-from adafruit_display_text import label
-from adafruit_gizmo import tft_gizmo
-
 import time
+import board
+import busio
+import neopixel 
+import math
+from analogio import AnalogIn
+from digitalio import DigitalInOut, Direction, Pull
 
-from adafruit_circuitplayground import cp
+from microcontroller import Pin
+import microcontroller
+import digitalio
+import adafruit_tsl2591
+import adafruit_amg88xx
+import adafruit_vl53l4cd
+led = neopixel.NeoPixel(board.NEOPIXEL, 1)
 
-from adafruit_display_shapes.rect import Rect
-from adafruit_display_shapes.circle import Circle
-from adafruit_display_shapes.roundrect import RoundRect
-from adafruit_display_shapes.triangle import Triangle
-from adafruit_display_shapes.line import Line
-from adafruit_display_shapes.polygon import Polygon
+# CAMERA
+cameraPin = DigitalInOut(board.D8)
+cameraPin.direction = Direction.OUTPUT
 
-# Create the TFT Gizmo display
-display = tft_gizmo.TFT_Gizmo()
+print('Got camera pin')
+cameraPin.value = True
+time.sleep(1.0) # wait for camera to initialize, seems to help cheap a$$ camera
 
-# Make the display context
-splash = displayio.Group(max_size=20)
-display.show(splash)
+RED = (55, 0, 0)
+YELLOW = (50, 25, 0)
+GREEN = (0, 50, 0)
+CYAN = (0, 255, 255)
+BLUE = (0, 0, 55)
+PURPLE = (180, 0, 255)
+BLACK = (0, 0, 0)
 
-def getAccelText():
-    x, y, z = cp.acceleration
-    txt = ' X:' + str(x) + '\n Y:' + str(y) + '\n Z:' + str(z)
-    return txt
+# Turn off neopixel
+led[0] = (0,0,0)
 
-def getLight():
-    return 'Light: ' + str(cp.light)
+uart = busio.UART(board.TX, board.RX, baudrate=9600)
 
-def drawRect(x, y, w, h, color, gp):
-    l = Line(x,   y, x+w, y,   color)
-    gp.append(l)
-    l = Line(x+w, y, x+w, y+h, color)
-    gp.append(l)
-    l = Line(x+w, y+h, x, y+h, color)
-    gp.append(l)
-    l = Line(x, y+h, x, y, color)
-    gp.append(l)
+def Clear():
+    LcdCmd([0xFE, 0x01]) 
 
+def LcdOn():
+    LcdCmd([0xFE, 0x42, 0x00]) 
 
-color_bitmap = displayio.Bitmap(240, 240, 1)
-color_palette = displayio.Palette(1)
-color_palette[0] = 0x550000  # outer
+def LcdOff():
+    LcdCmd([0x80, 0x00]) 
 
-bg_sprite = displayio.TileGrid(color_bitmap, pixel_shader=color_palette, x=0, y=0)
-splash.append(bg_sprite)
+def SetCursor(col, row):  # col, row starting at 1
+    LcdCmd([0xFE, 0x47, col, row])
 
-# Draw a smaller inner rectangle
-inner_bitmap = displayio.Bitmap(200, 200, 1)
-inner_palette = displayio.Palette(1)
-inner_palette[0] = 0x444444  # inner
-inner_sprite = displayio.TileGrid(inner_bitmap, pixel_shader=inner_palette, x=20, y=20)
-splash.append(inner_sprite)
+def LcdCmd(b):
+    uart.write( bytearray(b) )
+    time.sleep(0.1)
 
-# Draw a label
-text_group = displayio.Group(max_size=10, scale=2, x=30, y=35)
-text = "Steve W\nprogrammed\nthis"
-text_area = label.Label(terminalio.FONT, text=text, color=0xFFFF00)   
-text_group.append(text_area)  # Subgroup for text scaling
-splash.append(text_group)
+def WriteString(text):
+    LcdCmd(text)
 
-# ACCELEROMETER---------------------------
-x_group = displayio.Group(max_size=10, scale=2, x=30, y=80)
-txt = getAccelText()
-xtext_area = label.Label(terminalio.FONT, text=txt, color=0xFFFF00)   
-x_group.append(xtext_area)  # Subgroup for text scaling
+Clear()
+WriteString('Initializing...')
+time.sleep(1.0)
 
-splash.append(x_group)
+# Create sensor object, communicating over the board's default I2C bus
+i2c = board.I2C()  # uses board.SCL and board.SDA
 
-# LIGHT---------------------------
-l_group = displayio.Group(max_size=10, scale=2, x=30, y=200)
-txt = getLight()
-ltext_area = label.Label(terminalio.FONT, text=txt, color=0xFFFF00)   
-l_group.append(ltext_area)  # Subgroup for text scaling
-splash.append(l_group)
+lightSensor = adafruit_tsl2591.TSL2591(i2c)
+
+print('created light sensor')
+
+print('2nd I2C')
+I2C2 = busio.I2C(board.A4, board.A3) # Monkey around until you get a pair
+print('done w/2nd I2C')
 
 
-drawRect(20, 20, 200, 200, 0xFF0000, splash)
-drawRect(0, 0, 239, 239, 0xFF0000, splash)    
 
 
-def bb(ta, g, c):
-    dims = ta.bounding_box
-    drawRect (dims[0], dims[1], dims[2]+2, dims[3], c, g)
 
-bb(xtext_area, x_group, 0xFFFF00)
-    
+#--------------------------------------------
+# Time Of Flight
+#-------------------------------------------
+# Creating new I2C because of address conflict
 
-lastTime = time.monotonic()
+i2c = board.I2C()  # uses board.SCL and board.SDA
+
+THERMAL_DIFF = 0.1
+
+print('looking for TOF...')
+vl53 = adafruit_vl53l4cd.VL53L4CD(i2c)
+print('found tof')
+
+# OPTIONAL: can set non-default values
+vl53.inter_measurement = 0
+vl53.timing_budget = 200
+
+print("VL53L4CD Simple Test.")
+print("--------------------")
+model_id, module_type = vl53.model_info
+print("Model ID: 0x{:0X}".format(model_id))
+print("Module Type: 0x{:0X}".format(module_type))
+print("Timing Budget: {}".format(vl53.timing_budget))
+print("Inter-Measurement: {}".format(vl53.inter_measurement))
+print("--------------------")
+
+vl53.start_ranging()
+
 while True:
-    # splash is a Group
-    # bg_sprite is a TileGrid
-    # text_group is a Group
-    # text_area is a Label
-    # splash has text_group has text_area
-
-    nowTime = time.monotonic()
-    if (nowTime != lastTime):
-        #text_group.remove(text_area)
-        text = str(nowTime)
-        text_area = label.Label(terminalio.FONT, text=text, color=0xFFFF00)
-        #text_group.append(text_area)
-        text_group[0] = text_area
+    while not vl53.data_ready:
+        pass
+    vl53.clear_interrupt()
+    print("Distance: {} cm".format(vl53.distance))
 
 
 
+lastAvg = getAvgTherm()
+
+def testThermal():
+    global lastAvg
+    allCells = []
+    for row in amg.pixels:
+        for c in row:
+            allCells.append(c)
         
-        txt = getAccelText()
-        xtext_area = label.Label(terminalio.FONT, text=txt, color=0xFFFF00)   
-        x_group[0] = xtext_area
+    print('--')
+    #print(allCells)
+    allMax = max(allCells)
+    avg = sum(allCells)/len(allCells)
+    print(str(min(allCells)) + TAB + str(max(allCells)) + TAB + str(avg))
+    print('----')
+    
+    retval = (avg - THERMAL_DIFF ) > lastAvg # got brighter
 
-        txt = getLight()
-        ltext_area = label.Label(terminalio.FONT, text=txt, color=0xFFFF00)   
-        l_group[0] = ltext_area
+    #avgDiff = avg - lastAvg
+    #WriteString(str(avgDiff))
+
+    print(str(avg) + ',' + str(lastAvg))
+
+    lastAvg = avg
+
+    if retval:
+        return True
+    else:
+        return False
+
+def isLight():
+    #lux = lightSensor.lux
+    #print("Total light: {0}lux".format(lux))
+    # You can also read the raw infrared and visible light levels.
+    # These are unsigned, the higher the number the more light of that type.
+    # There are no units like lux.
+    # Infrared levels range from 0-65535 (16-bit)
+    infrared = lightSensor.infrared
+    #print("Infrared light: {0}".format(infrared))
+    # Visible-only levels range from 0-2147483647 (32-bit)
+    visible = lightSensor.visible
+    #print("Visible light: {0}".format(visible))
+    # Full spectrum (visible + IR) also range from 0-2147483647 (32-bit)
+    #full_spectrum = lightSensor.full_spectrum
+    #print("Full spectrum (IR + visible) light: {0}".format(full_spectrum))
+
+    LIGHT_THRESHOLD = 20000000
+
+    print('--------------')
+                 
+    if visible >= LIGHT_THRESHOLD: 
+        print('is light')
+        return True
+    else:
+        print('too dark')
+        return False
+
+def takePicture():        
+    #led[0] = BLUE
+    cameraPin.value=False
+    time.sleep(0.05)
+    cameraPin.value=True
+    #led[0] = YELLOW
+    msg = 'Done taking picture, waiting'
+    WriteString(msg)
+    print(msg)
+    time.sleep(10.0)    # main sleeper, camera really wants a little time to save picture.
+
+
+
+while True:
+    print('clear')
+    Clear()
+    if  testThermal():
+        WriteString('Thermal pass')
+        if isLight():
+            Clear()
+            WriteString('Taking picture')
+            takePicture()
+            Clear()
+            WriteString('Done taking picture')
+            led[0] = GREEN
+        else:
+            WriteString(', too dark')
+            print('Not taking picture')
+            led[0] = RED
+    else:
+        WriteString('Thermal fail')
+        print('No thermal')
+        led[0] = BLACK
         
-        lastTime = nowTime
-
     time.sleep(1.0)
