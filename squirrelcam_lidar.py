@@ -1,31 +1,33 @@
+#------------------------------------------------------    
+# Simple lidar/light/camera project
+# ---------
+# 2022 sjw
+#
+#------------------------------------------------------
 import time
 import board
 import busio
 import neopixel 
-import math
 from analogio import AnalogIn
 from digitalio import DigitalInOut, Direction, Pull
-
 from microcontroller import Pin
 import microcontroller
 import digitalio
 import adafruit_tsl2591
-import adafruit_amg88xx
 import adafruit_vl53l4cd
+
+# Single on-board neopixel
 led = neopixel.NeoPixel(board.NEOPIXEL, 1)
-import  adafruit_vl6180x
-import adafruit_vl53l0x
-
-
 
 # CAMERA
+# Just the worlds simples camera
 cameraPin = DigitalInOut(board.D8)
 cameraPin.direction = Direction.OUTPUT
-
 print('Got camera pin')
 cameraPin.value = True
 time.sleep(1.0) # wait for camera to initialize, seems to help cheap a$$ camera
 
+# COLOR CONSTANTS
 RED = (55, 0, 0)
 YELLOW = (50, 25, 0)
 GREEN = (0, 50, 0)
@@ -162,11 +164,11 @@ def isLight():
         return False
 
 def takePicture():        
-    #led[0] = BLUE
+    led[0] = BLUE
     cameraPin.value=False
     time.sleep(0.05)
     cameraPin.value=True
-    #led[0] = YELLOW
+    led[0] = YELLOW
     msg = 'Done taking picture, waiting'
     WriteString(msg)
     print(msg)
@@ -180,11 +182,10 @@ while True:
         pass
     #print('\n')
 
-    d = vl53.distance
-
+    d = vl53.distance # get distance at this point in time, it may change
     vl53.clear_interrupt()
 
-    Clear()
+    Clear() # LCD
 
     # if seems that 0.0 means 'too far' and the following value is
     # also invalid
@@ -202,8 +203,9 @@ while True:
     else:
         lastFail = False
 
-    WriteString(" {} cm".format(d))
+    WriteString(" {} cm".format(d))  # LCD
     print("Distance: {} cm".format(d))
+ 
  
     if isLight():
         print('*')
