@@ -15,6 +15,8 @@ import microcontroller
 import digitalio
 import adafruit_tsl2591
 import adafruit_vl53l4cd
+import adafruit_apds9960.apds9960
+
 
 # Single on-board neopixel
 led = neopixel.NeoPixel(board.NEOPIXEL, 1)
@@ -93,6 +95,10 @@ print ('attempting 2nd i2c')
 I2C2 = busio.I2C(board.A5, board.A4) # Monkey around until you get a pair
 print('got 2nd i2c port using A5, A4') 
 
+adp9960 = adafruit_apds9960.apds9960.APDS9960(I2C2)
+print('got gesture sensor')
+adp9960.enable_proximity = True
+
 print('attempting vl53l4cd on 2nd i2c')
 vl53 = adafruit_vl53l4cd.VL53L4CD(I2C2)
 print('aquired 53L4CD lidar')
@@ -115,6 +121,7 @@ vl53.start_ranging()
 #lastAvg = getAvgTherm()
 lastAvg = None
 
+# TODO:  Update this use lidar
 def testThermal():
     global lastAvg
     allCells = []
@@ -194,6 +201,9 @@ while True:
 
     Clear() # LCD
 
+    
+
+
     # if seems that 0.0 means 'too far' and the following value is
     # also invalid
     if lastFail == True:
@@ -212,7 +222,7 @@ while True:
 
     WriteString(" {} cm".format(d))  # LCD
     print("Distance: {} cm".format(d))
- 
+    print("Proximity: {} ".format(adp9960.proximity)) 
  
     if isLight():
         print('*')
