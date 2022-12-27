@@ -1,0 +1,129 @@
+import time
+import board
+import busio
+import adafruit_gps
+
+
+uart = busio.UART(board.TX, board.RX, baudrate=9600)
+
+time.sleep(1.0) 
+#init LCD
+ba = [0x7C, 0x04]
+uart.write( bytearray(ba) )
+time.sleep(0.1)
+
+ba = [0x7C, 0x06]
+uart.write( bytearray(ba) )
+time.sleep(0.1)
+
+
+# Initialize GPS
+i2c = busio.I2C(board.SCL, board.SDA)
+gps = adafruit_gps.GPS_GtopI2C(i2c, debug=False) # Use I2C interface
+
+print('gps initialized')
+gps.send_command(b"PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0")
+gps.send_command(b"PMTK220,1000")
+
+def WriteString(text):
+    ba = str(text)
+    uart.write( bytearray(ba) )
+    time.sleep(.1)
+
+def Clear():
+    print('clearing LCD')
+    ba = [0xFE, 0x01]
+    uart.write( bytearray(ba) )
+    time.sleep(0.1)
+
+def BacklightOff():
+    ba = [0x7C, 0x80]
+    uart.write( bytearray(ba) )
+    time.sleep(0.1)
+
+def BacklightOn():
+    ba = [0x7C, 0x9D]
+    uart.write( bytearray(ba) )
+    time.sleep(0.1)
+
+def SetCursor(pos):  # col, row starting at 1
+    if pos > 16:
+        pos = pos - 17 + 64
+
+    ba = [0xFE, 0x80 +  pos]
+    uart.write( bytearray(ba) )
+    time.sleep(0.1)
+
+
+def ReadGps():
+    #Clear()
+    #SetCursor(0)
+    ret = gps.update()
+    print('gps.update(): ', ret)
+    
+    print('Sats: ', gps.satellites)
+
+    #Clear()
+    #WriteString('GPS Updated')
+    #data = gps.read(32)  # read up to 32 bytes
+    #print(data)  # this is a bytearray type
+    
+    if not gps.has_fix:
+        print('no fix')
+        return
+
+    Clear()
+    if gps.satellites is not None:
+        SetCursor(0)
+        print("Locked, sats: {}".format(gps.satellites))
+        WriteString("Locked. Sats: {}".format(gps.satellites))
+        BacklightOn()
+    else:
+        print('no satellites')
+        BacklightOff()
+        WriteString('No Sats')
+ 
+    SetCursor(17)
+    h = gps.timestamp_utc.tm_hour 
+    m =  gps.timestamp_utc.tm_min 
+    tm = str(h) + ':' + str(m)
+    print(tm)
+    #WriteString(tm)
+    lat = "{0:.2f}".format(gps.latitude)
+    lon = "{0:.2f}".format(gps.longitude)
+    pos = lat + ', ' + lon
+    print (pos)
+    WriteString(pos)
+
+    if not gps.has_fix:
+        # Try again if we don't have a fix yet.
+        WriteString(' No Fix')
+        print("Waiting for fix...")
+        return
+
+    data = None
+    if data is not None:
+        # convert bytearray to string
+        print('has fix!')
+        print("# satellites: {}".format(gps.satellites))
+        data_string = "".join([chr(b) for b in data])
+        print()
+        print('Data: ', data_string)
+        print()
+
+WriteString("GPS Particle Sensor")
+last_print = time.monotonic()
+while True:
+    try:
+        current = time.monotonic()
+        if current - last_print >= 3.0:
+            last_print = current
+            ReadGps()        
+            print('Time: ', current)
+        time.sleep(0.1)
+
+    except Exception as inst:
+        print(type(inst))    # the exception instance
+        print(inst.args)     # arguments stored in .args
+        print(inst)          # __str__ allows args to be printed directly,
+                             # but may be overridden in exception subclasses
