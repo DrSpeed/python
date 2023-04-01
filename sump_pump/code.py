@@ -18,9 +18,6 @@ import adafruit_esp32spi.adafruit_esp32spi_socket as socket
 from adafruit_esp32spi import adafruit_esp32spi
 
 
-# My connection to Adafruit IO
-# IO_USERNAME  "drspeed"
-# IO_KEY       "0312d30c3baba2a2ad61163d440343b73b33660e"
 
 def getWifi():
     # Get wifi details and more from a secrets.py file
