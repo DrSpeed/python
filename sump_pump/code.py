@@ -6,8 +6,8 @@ import random
 import busio
 import digitalio
 from digitalio import DigitalInOut
-import adafruit_ds3231
 import adafruit_vl53l4cd
+from random import randint
 
 # Import Adafruit IO REST client.
 from adafruit_io.adafruit_io import IO_HTTP, AdafruitIO_RequestError
@@ -18,136 +18,108 @@ import adafruit_esp32spi.adafruit_esp32spi_socket as socket
 from adafruit_esp32spi import adafruit_esp32spi
 
 
+# COLOR CONSTANTS for use w/LED, dimmed for final product
+RED    = (5, 0, 0)
+YELLOW = (5, 5, 0)
+GREEN  = (0, 5, 0)
+CYAN   = (0, 255, 255)
+BLUE   = (0, 0, 5)
+PURPLE = (180, 0, 255)
+BLACK  = (0, 0, 0)
 
-def getWifi():
-    # Get wifi details and more from a secrets.py file
-    try:
-        from secrets import secrets
-    except ImportError:
-        print("WiFi secrets are kept in secrets.py, please add them there!")
-        raise
+FEED_NAME = "sump"
 
-    print("ESP32 SPI webclient test")
-
-    TEXT_URL = "http://wifitest.adafruit.com/testwifi/index.html"
-    JSON_URL = "http://api.coindesk.com/v1/bpi/currentprice/USD.json"
+SLEEP_SECS = 10.0
 
 
-    # If you are using a board with pre-defined ESP32 Pins:
-    esp32_cs = DigitalInOut(board.ESP_CS)
-    esp32_ready = DigitalInOut(board.ESP_BUSY)
-    esp32_reset = DigitalInOut(board.ESP_RESET)
+print("Importing secrets...")
+try:
+    from secrets import secrets
+except ImportError:
+    print("WiFi secrets are kept in secrets.py, please add them there!")
+    raise
+print("Done Importing secrets...")
 
-    spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+
+print("Initializing WIFI...")    
+esp32_cs = DigitalInOut(board.ESP_CS)
+esp32_ready = DigitalInOut(board.ESP_BUSY)
+esp32_reset = DigitalInOut(board.ESP_RESET)
+spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+print("done Initializing WIFI")        
+
+#
+# Send a measurement to the AdafruitIO feed 
+#
+def sendIO(sump_val):
     esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
-
-    requests.set_socket(socket, esp)
-
-    if esp.status == adafruit_esp32spi.WL_IDLE_STATUS:
-        print("ESP32 found and in idle mode")
-        print("Firmware vers.", esp.firmware_version)
-        print("MAC addr:", [hex(i) for i in esp.MAC_address])
-
-    for ap in esp.scan_networks():
-        print("\t%s\t\tRSSI: %d" % (str(ap["ssid"], "utf-8"), ap["rssi"]))
 
     print("Connecting to AP...")
     while not esp.is_connected:
         try:
             esp.connect_AP(secrets["ssid"], secrets["password"])
-        except OSError as e:
+            pixels.fill(BLACK)
+        except RuntimeError as e:
             print("could not connect to AP, retrying: ", e)
             continue
+        print("Connected to", str(esp.ssid, "utf-8"), "\tRcvSigStrnIndic:", esp.rssi)
 
-    print("Connected to", str(esp.ssid, "utf-8"), "\tRSSI:", esp.rssi)
-    print("My IP address is", esp.pretty_ip(esp.ip_address))
-    print("IP lookup adafruit.com: %s" % esp.pretty_ip(esp.get_host_by_name("adafruit.com")))
-    print("Ping google.com: %d ms" % esp.ping("google.com"))
+    pixels.fill(YELLOW)
+    socket.set_interface(esp)
+    pixels.fill(BLACK)
 
-    # esp._debug = True
-    print("Fetching text from", TEXT_URL)
-    r = requests.get(TEXT_URL)
-    print("-" * 40)
-    print(r.text)
-    print("-" * 40)
-    r.close()
+    pixels.fill(YELLOW)
+    requests.set_socket(socket, esp)
+    pixels.fill(BLACK)
 
-    print()
-    print("Fetching json from", JSON_URL)
-    r = requests.get(JSON_URL)
-    print("-" * 40)
-    print(r.json())
-    print("-" * 40)
-    r.close()
+    # get/set io user/pwd from secrets
+    aio_username = secrets["io_username"]
+    aio_key = secrets["io_key"]
 
-    print("Done!")
-    time.sleep(60.0)
+    # Initialize an Adafruit IO HTTP API object
+    io = IO_HTTP(aio_username, aio_key, requests)
 
-
-getWifi()
+    # Send sump value to IO
+    print("Sending {0} to sump feed...".format(sump_val))
+    pixels.fill(YELLOW)
+    io.send_data(FEED_NAME, sump_val)
+    pixels.fill(BLACK)
+    print("Data sent!")
 
 
-print('-I2C-')
+
+
+
+
+print('Initializing I2C...')
 i2c = board.I2C()
+print('Done Initializing I2C')
 
-print('getting clock')
-
-print('getting range sensor')
+print('Initializing Range Sensor...')
 vl53 = adafruit_vl53l4cd.VL53L4CD(i2c)
+print('Done Initializing Range Sensor')
 
 # OPTIONAL: can set non-default values
 vl53.inter_measurement = 0
 vl53.timing_budget = 200
 
 
-# set the time (do this once) 
- #                     year, mon, date, hour, min, sec, wday, yday, isdst
 
-
-
-
-print("VL53L4CD Simple Test.")
+print("VL53L4CD Information")
 print("--------------------")
-
 model_id, module_type = vl53.model_info
 
 print("Model ID: 0x{:0X}".format(model_id))
-
 print("Module Type: 0x{:0X}".format(module_type))
-
 print("Timing Budget: {}".format(vl53.timing_budget))
-
 print("Inter-Measurement: {}".format(vl53.inter_measurement))
-
 print("--------------------")
 
-
+print ('Initializing ranging...')
 vl53.start_ranging()
+print ('Done Initializing ranging')
 
-
-if False:
-    while not i2c.try_lock():
-        pass
-    try:
-        while True:
-            print(
-                "I2C addresses found:",
-                [hex(device_address) for device_address in i2c.scan()],
-            )
-            time.sleep(2)
-
-    finally:  # unlock the i2c bus when ctrl-c'ing out of the loop
-        i2c.unlock()
-
-
-
-RED    = (5, 0, 0)
-YELLOW = (255, 150, 0)
-GREEN  = (0, 5, 0)
-CYAN   = (0, 255, 255)
-BLUE   = (0, 0, 5)
-PURPLE = (180, 0, 255)
-
+print ('Initializing neopixel...')
 led = digitalio.DigitalInOut(board.D4)
 led.direction = digitalio.Direction.OUTPUT
 led.value = False
@@ -156,35 +128,36 @@ led.value = False
 pixel_pin = board.D4
 num_pixels = 1
 pixels = neopixel.NeoPixel(board.NEOPIXEL, 1)
-print ('done with neopixel')
-print('------------')
+print ('Done Initializing neopixel...')
 
 
+
+#
+# showData() Write data to host console
+#
 def showData(s):
-    for row in range(0, 4):
         print(s) 
         print("--------")
-
-
 
 while True:
     try:
         if vl53.data_ready:
+            pixels.fill(BLUE)
             vl53.clear_interrupt()
             s =  "{} cm".format(vl53.distance)
             showData(s)
-            pixels.fill(BLUE)
-        else:
-            s = 'nr'
+            pixels.fill(YELLOW)
+            sendIO(vl53.distance)
+            pixels.fill(BLACK)
+        else:  # NOT READY YET
             pixels.fill(RED)
 
-        time.sleep(0.5)
-
-        #print('.', end=' ')  # feedback, it's working
-        pixels.fill(GREEN)
-   
     except:
         print('error')
         pixels.fill(RED)
 
-    time.sleep(0.5)
+    pixels.fill(GREEN)
+    print('sleeping...')
+    time.sleep(SLEEP_SECS)
+    print('done sleeping.')
+
