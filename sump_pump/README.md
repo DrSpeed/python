@@ -6,6 +6,19 @@ Project to use Time Of Flight VL53L4Cx to measure distance and upload to Adafrui
 
 Copy code, secrets and lib to embedded device
 
+## Devices
+#### The computing resource:
+Adafruit Metro (Cortex) M4 WIFI
+
+![Metro M4 WIFI](https://media.digikey.com/photos/Adafruit%20Industries%20LLC/MFG_4000.jpg "Metro M4 WIFI")
+
+
+Adafruit VL53L4CX ToF Distance sensor
+
+https://www.adafruit.com/product/5425
+
+![vl53l5cx](https://media.digikey.com/Photos/Adafruit%20Industries%20LLC/MFG_5425.jpg "vl53l5cx")
+
 
 ## Contributing
 
